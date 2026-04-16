@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="GLP-1">
+<title>GLP-1 Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root {
+  --bg: #f2f4f6;
+  --surface: #ffffff;
+  --surface2: #eef0f3;
+  --border: #e0e4ea;
+  --border2: #cdd2da;
+  --teal: #00956e;
+  --teal-bg: rgba(0,149,110,0.08);
+  --teal-border: rgba(0,149,110,0.25);
+  --amber: #b86e00;
+  --red: #cc3333;
+  --text: #111827;
+  --text2: #6b7280;
+  --text3: #adb5bd;
+  --font: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100dvh; -webkit-font-smoothing: antialiased; }
+
+/* NAV */
+.nav { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--border); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
+.nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 0 8px; background: none; border: none; color: var(--text3); font-family: var(--font); font-size: 10px; cursor: pointer; }
+.nav-btn.active { color: var(--teal); }
+.nav-btn svg { width: 22px; height: 22px; }
+
+/* SCREENS */
+.screen { display: none; padding: 0 16px calc(80px + env(safe-area-inset-bottom)); }
+.screen.active { display: block; }
+
+/* HEADER */
+.page-header { padding: 16px 0 20px; display: flex; justify-content: space-between; align-items: center; }
+.page-title { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+.page-sub { font-size: 13px; color: var(--text2); margin-top: 2px; }
+
+/* CARDS */
+.card { background: var(--surface); border-radius: 16px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.card-label { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+
+/* STAT GRID */
+.stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+.stat-card { background: var(--surface); border-radius: 14px; padding: 14px 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.stat-label { font-size: 10px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.stat-value { font-size: 20px; font-weight: 700; color: var(--text); line-height: 1; }
+.stat-value.green { color: var(--teal); }
+.stat-value.gray { color: var(--text2); }
+
+/* PROGRESS */
+.progress-track { height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; margin: 10px 0 6px; }
+.progress-fill { height: 100%; background: var(--teal); border-radius: 4px; transition: width 0.5s ease; }
+.progress-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--text2); }
+.progress-pct { color: var(--teal); font-weight: 700; }
+
+/* CHART */
+.chart-wrap { position: relative; height: 180px; margin-top: 4px; }
+
+/* SHOT CARD */
+.shot-summary { display: flex; justify-content: space-between; align-items: center; }
+.shot-dose { font-size: 32px; font-weight: 700; }
+.shot-dose span { font-size: 16px; font-weight: 400; color: var(--text2); }
+.shot-meta { font-size: 13px; color: var(--text2); margin-top: 4px; }
+.badge { font-size: 11px; font-weight: 600; padding: 5px 12px; border-radius: 20px; }
+.badge-green { background: var(--teal-bg); color: var(--teal); }
+.badge-amber { background: rgba(184,110,0,0.1); color: var(--amber); }
+
+/* BUTTONS */
+.action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.btn-primary { background: var(--teal); color: #fff; border: none; border-radius: 14px; padding: 16px; font-family: var(--font); font-size: 16px; font-weight: 600; cursor: pointer; }
+.btn-secondary { background: var(--surface); color: var(--text); border: 1.5px solid var(--border2); border-radius: 14px; padding: 16px; font-family: var(--font); font-size: 16px; font-weight: 500; cursor: pointer; }
+.btn-full { width: 100%; background: var(--teal); color: #fff; border: none; border-radius: 14px; padding: 17px; font-family: var(--font); font-size: 17px; font-weight: 600; cursor: pointer; margin-top: 12px; }
+.btn-outline { width: 100%; background: transparent; color: var(--teal); border: 1.5px solid var(--teal-border); border-radius: 14px; padding: 15px; font-family: var(--font); font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+.btn-cancel { width: 100%; background: var(--surface2); color: var(--text2); border: none; border-radius: 14px; padding: 15px; font-family: var(--font); font-size: 16px; font-weight: 500; cursor: pointer; margin-top: 8px; }
+.btn-danger { color: var(--red); border-color: rgba(204,51,51,0.25); }
+
+/* FORMS */
+.form-section { margin-bottom: 22px; }
+.form-label { font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; display: block; }
+.form-input { width: 100%; background: var(--surface2); border: 1.5px solid var(--border); border-radius: 12px; color: var(--text); font-family: var(--font); font-size: 17px; padding: 14px; outline: none; }
+.form-input:focus { border-color: var(--teal); background: var(--surface); }
+.form-input.big { font-size: 44px; font-weight: 700; text-align: center; padding: 20px; }
+textarea.form-input { resize: none; height: 84px; line-height: 1.5; }
+
+/* CHIPS */
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { padding: 10px 16px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--surface2); color: var(--text2); font-family: var(--font); font-size: 15px; font-weight: 500; cursor: pointer; }
+.chip.selected { border-color: var(--teal); background: var(--teal-bg); color: var(--teal); font-weight: 600; }
+
+/* HISTORY TABS */
+.history-tabs { display: flex; border-bottom: 1.5px solid var(--border); margin-bottom: 14px; }
+.htab { flex: 1; padding: 12px; background: none; border: none; border-bottom: 2.5px solid transparent; color: var(--text3); font-family: var(--font); font-size: 15px; font-weight: 500; cursor: pointer; margin-bottom: -1.5px; }
+.htab.active { color: var(--teal); border-bottom-color: var(--teal); font-weight: 600; }
+
+.history-row { display: flex; justify-content: space-between; align-items: center; background: var(--surface); border-radius: 14px; padding: 14px 16px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.history-date { font-size: 11px; color: var(--text3); margin-bottom: 3px; font-weight: 500; }
+.history-main { font-size: 22px; font-weight: 700; }
+.history-sub { font-size: 13px; color: var(--text2); margin-top: 2px; }
+.delta { font-size: 16px; font-weight: 700; }
+.delta.down { color: var(--teal); }
+.delta.up { color: var(--red); }
+.delete-btn { background: none; border: none; color: var(--text3); font-size: 20px; cursor: pointer; padding: 6px 8px; }
+
+/* SETTINGS */
+.settings-row { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.settings-row:last-child { border-bottom: none; }
+.settings-label { font-size: 16px; color: var(--text); }
+.settings-input { background: var(--surface2); border: 1.5px solid var(--border); border-radius: 10px; color: var(--text); font-family: var(--font); font-size: 17px; padding: 8px 12px; width: 110px; text-align: right; outline: none; }
+.settings-input:focus { border-color: var(--teal); }
+
+/* MODAL */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 200; align-items: flex-end; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--surface); border-radius: 24px 24px 0 0; padding: 16px 20px; padding-bottom: calc(20px + env(safe-area-inset-bottom)); width: 100%; max-height: 90vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.modal-handle { width: 40px; height: 4px; background: var(--border2); border-radius: 2px; margin: 0 auto 18px; }
+.modal-title { font-size: 22px; font-weight: 700; margin-bottom: 22px; }
+
+/* CONFIRM */
+.confirm-box { background: var(--teal-bg); border: 1.5px solid var(--teal-border); border-radius: 12px; padding: 12px 14px; margin-bottom: 4px; font-size: 14px; color: var(--teal); font-weight: 500; display: none; }
+.confirm-box.show { display: block; }
+
+/* TOAST */
+.toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%) translateY(-100px); background: #1a1a1a; color: #fff; font-family: var(--font); font-size: 14px; font-weight: 600; padding: 11px 22px; border-radius: 22px; z-index: 999; transition: transform 0.25s ease; white-space: nowrap; }
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+.empty { text-align: center; padding: 48px 20px; color: var(--text3); font-size: 15px; line-height: 1.8; }
+.section-header { font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; margin: 22px 0 8px; }
+.help-text { font-size: 14px; color: var(--text2); line-height: 1.7; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<!-- DASHBOARD -->
+<div class="screen active" id="screen-dashboard">
+  <div class="page-header">
+    <div>
+      <div class="page-title">GLP-1</div>
+      <div class="page-sub">Tirzepatide tracker</div>
+    </div>
+    <button class="badge badge-green" onclick="document.getElementById('csv-file-input').click()" style="cursor:pointer;border:none;font-size:12px;">Import CSV</button>
+    <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCSVImport(this)">
+  </div>
+
+  <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="stat-card"><div class="stat-label">Start</div><div class="stat-value gray" id="stat-start">--</div></div>
+    <div class="stat-card"><div class="stat-label">Current</div><div class="stat-value gray" id="stat-current">--</div></div>
+    <div class="stat-card"><div class="stat-label">Goal</div><div class="stat-value gray" id="stat-goalw">--</div></div>
+  </div>
+  <div class="stat-grid" style="grid-template-columns:repeat(2,1fr);margin-top:-4px">
+    <div class="stat-card"><div class="stat-label">Lost</div><div class="stat-value gray" id="stat-lost">--</div></div>
+    <div class="stat-card"><div class="stat-label">To Goal</div><div class="stat-value gray" id="stat-togoal">--</div></div>
+  </div>
+
+  <div class="card" id="progress-card" style="display:none">
+    <div class="card-label">Progress to goal</div>
+    <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    <div class="progress-meta"><span id="prog-start">--</span><span class="progress-pct" id="prog-pct">0%</span><span id="prog-end">--</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Weight trend</div>
+    <div class="chart-wrap"><canvas id="weightChart" role="img" aria-label="Weight trend over time"></canvas></div>
+  </div>
+
+  <div class="card" id="last-shot-card" style="display:none">
+    <div class="card-label">Last shot</div>
+    <div class="shot-summary">
+      <div>
+        <div class="shot-dose" id="last-dose">-- <span>mg</span></div>
+        <div class="shot-meta" id="last-meta">--</div>
+      </div>
+      <span class="badge badge-amber">Tirzepatide</span>
+    </div>
+  </div>
+
+  <div class="action-row">
+    <button class="btn-primary" onclick="openModal('modal-shot')">+ Log Shot</button>
+    <button class="btn-secondary" onclick="openModal('modal-weight')">+ Weight</button>
+  </div>
+</div>
+
+<!-- HISTORY -->
+<div class="screen" id="screen-history">
+  <div class="page-header"><div class="page-title">History</div></div>
+  <div class="history-tabs">
+    <button class="htab active" id="htab-shots" onclick="switchHistoryTab('shots')">Shots</button>
+    <button class="htab" id="htab-weights" onclick="switchHistoryTab('weights')">Weights</button>
+  </div>
+  <div id="list-shots"></div>
+  <div id="list-weights" style="display:none"></div>
+</div>
+
+<!-- SETTINGS -->
+<div class="screen" id="screen-settings">
+  <div class="page-header"><div class="page-title">Settings</div></div>
+
+  <div class="section-header">Weight Goals</div>
+  <div class="card">
+    <div class="settings-row">
+      <span class="settings-label">Starting weight (lbs)</span>
+      <input type="number" class="settings-input" id="set-start" placeholder="240" onchange="saveSetting('startWeight',this.value)">
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Goal weight (lbs)</span>
+      <input type="number" class="settings-input" id="set-goal" placeholder="185" onchange="saveSetting('goalWeight',this.value)">
+    </div>
+  </div>
+
+  <div class="section-header">Withings Weight Data</div>
+  <div class="card">
+    <p class="help-text">Export your weight from the Withings app: Profile → Export Data → Weight. Then import it here.</p>
+    <input type="file" id="csv-file-input2" accept=".csv" style="display:none" onchange="handleCSVImport(this)">
+    <button class="btn-outline" onclick="document.getElementById('csv-file-input2').click()">Import Withings CSV</button>
+  </div>
+
+  <div class="section-header">Google Drive Backup</div>
+  <div class="card">
+    <div id="gdrive-signed-out">
+      <p class="help-text">Connect Google Drive to automatically back up all your shots and weight data to the cloud.</p>
+      <button class="btn-outline" onclick="gdriveSignIn()">Connect Google Drive</button>
+    </div>
+    <div id="gdrive-signed-in" style="display:none">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <span class="badge badge-green">Connected</span>
+        <span style="font-size:13px;color:var(--text2)" id="gdrive-email"></span>
+      </div>
+      <button class="btn-outline" onclick="gdriveBackup()">Back up now</button>
+      <button class="btn-outline" onclick="gdriveRestore()">Restore from backup</button>
+      <button class="btn-outline btn-danger" onclick="gdriveSignOut()">Disconnect</button>
+    </div>
+    <div id="gdrive-status" style="font-size:13px;color:var(--text2);margin-top:10px;display:none"></div>
+  </div>
+
+  <div class="section-header">Local Backup</div>
+  <div class="card">
+    <p class="help-text">Export all your data as a JSON file.</p>
+    <button class="btn-outline" onclick="exportData()">Export JSON backup</button>
+    <button class="btn-outline btn-danger" onclick="clearAll()">Clear all data</button>
+  </div>
+
+  <div style="text-align:center;color:var(--text3);font-size:12px;margin-top:28px;">GLP-1 Tracker · Tirzepatide</div>
+</div>
+
+<!-- LOG SHOT MODAL -->
+<div class="modal-overlay" id="modal-shot">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Log Shot</div>
+    <div class="form-section">
+      <label class="form-label">Date</label>
+      <input type="date" class="form-input" id="shot-date">
+    </div>
+    <div class="form-section">
+      <label class="form-label">Dosage (mg)</label>
+      <div class="chip-row" id="dosage-chips">
+        <div class="chip" onclick="selectChip(this,'dosage')">2.5</div>
+        <div class="chip" onclick="selectChip(this,'dosage')">5</div>
+        <div class="chip" onclick="selectChip(this,'dosage')">7.5</div>
+        <div class="chip" onclick="selectChip(this,'dosage')">10</div>
+        <div class="chip" onclick="selectChip(this,'dosage')">12.5</div>
+        <div class="chip" onclick="selectChip(this,'dosage')">15</div>
+      </div>
+    </div>
+    <div class="form-section">
+      <label class="form-label">Injection site</label>
+      <div class="chip-row" id="site-chips">
+        <div class="chip" onclick="selectChip(this,'site')">Abdomen</div>
+        <div class="chip" onclick="selectChip(this,'site')">Thigh</div>
+        <div class="chip" onclick="selectChip(this,'site')">Upper arm</div>
+      </div>
+    </div>
+    <div class="form-section">
+      <label class="form-label">Side (optional)</label>
+      <div class="chip-row" id="side-chips">
+        <div class="chip" onclick="toggleChip(this,'side')">Left</div>
+        <div class="chip" onclick="toggleChip(this,'side')">Right</div>
+      </div>
+    </div>
+    <div class="form-section">
+      <label class="form-label">Notes (optional)</label>
+      <textarea class="form-input" id="shot-notes" placeholder="Side effects, how you felt..."></textarea>
+    </div>
+    <div class="confirm-box" id="shot-confirm"></div>
+    <button class="btn-full" onclick="saveShot()">Log Shot</button>
+    <button class="btn-cancel" onclick="closeModal('modal-shot')">Cancel</button>
+  </div>
+</div>
+
+<!-- LOG WEIGHT MODAL -->
+<div class="modal-overlay" id="modal-weight">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Log Weight</div>
+    <div class="form-section">
+      <label class="form-label">Date</label>
+      <input type="date" class="form-input" id="weight-date">
+    </div>
+    <div class="form-section">
+      <label class="form-label">Weight (lbs)</label>
+      <input type="number" step="0.1" class="form-input big" id="weight-val" placeholder="0.0">
+    </div>
+    <button class="btn-full" onclick="saveWeight()">Save Weight</button>
+    <button class="btn-cancel" onclick="closeModal('modal-weight')">Cancel</button>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav class="nav">
+  <button class="nav-btn active" id="nav-dashboard" onclick="switchScreen('dashboard')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+    Dashboard
+  </button>
+  <button class="nav-btn" id="nav-history" onclick="switchScreen('history')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+    History
+  </button>
+  <button class="nav-btn" id="nav-settings" onclick="switchScreen('settings')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+    Settings
+  </button>
+</nav>
+
+<script src="https://accounts.google.com/gsi/client" async></script>
+<script>
+let state = { shots: [], weights: [], settings: {} };
+let chart = null;
+let selDosage = null, selSite = null, selSide = null;
+
+function save() { localStorage.setItem('glp1', JSON.stringify(state)); }
+function load() { try { const r = localStorage.getItem('glp1'); if (r) state = JSON.parse(r); } catch(e){} }
+
+function saveSetting(key, val) {
+  state.settings[key] = val ? parseFloat(val) : null;
+  save(); renderDashboard(); showToast('Saved');
+}
+
+function switchScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  document.getElementById('nav-'+name).classList.add('active');
+  if (name === 'history') renderHistory();
+  if (name === 'dashboard') renderDashboard();
+}
+
+function openModal(id) {
+  if (id === 'modal-shot') {
+    document.getElementById('shot-date').value = today();
+    document.getElementById('shot-notes').value = '';
+    document.getElementById('shot-confirm').classList.remove('show');
+    selDosage = null; selSite = null; selSide = null;
+    document.querySelectorAll('#modal-shot .chip').forEach(c => c.classList.remove('selected'));
+  }
+  if (id === 'modal-weight') {
+    document.getElementById('weight-date').value = today();
+    document.getElementById('weight-val').value = '';
+  }
+  document.getElementById(id).classList.add('open');
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if(e.target===o) o.classList.remove('open'); }));
+
+function selectChip(el, group) {
+  document.querySelectorAll('#'+group+'-chips .chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  if (group==='dosage') selDosage = parseFloat(el.textContent);
+  if (group==='site') selSite = el.textContent;
+  updateConfirm();
+}
+function toggleChip(el, group) {
+  const was = el.classList.contains('selected');
+  document.querySelectorAll('#'+group+'-chips .chip').forEach(c => c.classList.remove('selected'));
+  if (!was) { el.classList.add('selected'); selSide = el.textContent; } else selSide = null;
+  updateConfirm();
+}
+function updateConfirm() {
+  const box = document.getElementById('shot-confirm');
+  if (selDosage && selSite) {
+    box.textContent = selDosage+'mg · '+(selSide?selSide+' ':'')+selSite+' · '+document.getElementById('shot-date').value;
+    box.classList.add('show');
+  } else box.classList.remove('show');
+}
+
+function saveShot() {
+  if (!selDosage) return showToast('Select a dosage');
+  if (!selSite) return showToast('Select injection site');
+  state.shots.unshift({ id: Date.now(), date: document.getElementById('shot-date').value, dosage: selDosage, site: (selSide?selSide+' ':'')+selSite, notes: document.getElementById('shot-notes').value });
+  save(); closeModal('modal-shot'); renderDashboard(); showToast(selDosage+'mg logged');
+}
+
+function saveWeight() {
+  const w = parseFloat(document.getElementById('weight-val').value);
+  const date = document.getElementById('weight-date').value;
+  if (!w || w<50||w>600) return showToast('Enter a valid weight');
+  const idx = state.weights.findIndex(x => x.date===date);
+  const entry = { id: Date.now(), date, weight: w, source: 'manual' };
+  if (idx>=0) state.weights[idx]=entry; else state.weights.push(entry);
+  state.weights.sort((a,b)=>a.date.localeCompare(b.date));
+  save(); closeModal('modal-weight'); renderDashboard(); showToast(w+' lbs saved');
+}
+
+function deleteShot(id) { if (!confirm('Delete shot?')) return; state.shots=state.shots.filter(s=>s.id!==id); save(); renderHistory(); renderDashboard(); }
+function deleteWeight(id) { if (!confirm('Delete weight?')) return; state.weights=state.weights.filter(w=>w.id!==id); save(); renderHistory(); renderDashboard(); }
+
+function renderDashboard() {
+  const W = state.weights, S = state.shots;
+  const { goalWeight, startWeight } = state.settings;
+  const last = W.length ? W[W.length-1].weight : null;
+  const lost = startWeight && last ? startWeight-last : null;
+  const toGoal = goalWeight && last ? last-goalWeight : null;
+
+  const cur = document.getElementById('stat-current');
+  cur.textContent = last ? last+' lbs' : '--';
+  cur.className = 'stat-value gray';
+
+  const startEl = document.getElementById('stat-start');
+  startEl.textContent = startWeight ? startWeight+' lbs' : '--';
+  startEl.className = 'stat-value gray';
+
+  const goalEl = document.getElementById('stat-goalw');
+  goalEl.textContent = goalWeight ? goalWeight+' lbs' : '--';
+  goalEl.className = 'stat-value gray';
+
+  const lostEl = document.getElementById('stat-lost');
+  if (lost!==null) { lostEl.textContent=(lost>0?'-':'+')+(Math.abs(lost).toFixed(1))+' lbs'; lostEl.className='stat-value '+(lost>0?'green':'gray'); }
+  else { lostEl.textContent='--'; lostEl.className='stat-value gray'; }
+
+  const tgEl = document.getElementById('stat-togoal');
+  tgEl.textContent = toGoal!==null ? toGoal.toFixed(1)+' lbs' : '--';
+  tgEl.className = 'stat-value gray';
+
+  const pc = document.getElementById('progress-card');
+  if (startWeight && goalWeight && last) {
+    pc.style.display='block';
+    const pct = Math.min(100,Math.max(0,Math.round(((startWeight-last)/(startWeight-goalWeight))*100)));
+    document.getElementById('progress-fill').style.width=pct+'%';
+    document.getElementById('prog-pct').textContent=pct+'%';
+    document.getElementById('prog-start').textContent=startWeight+' lbs';
+    document.getElementById('prog-end').textContent=goalWeight+' lbs';
+  } else pc.style.display='none';
+
+  renderChart(W, goalWeight);
+
+  const lsc = document.getElementById('last-shot-card');
+  if (S.length) {
+    lsc.style.display='block';
+    document.getElementById('last-dose').innerHTML=S[0].dosage+' <span>mg</span>';
+    document.getElementById('last-meta').textContent=fmtDate(S[0].date)+' · '+S[0].site;
+  } else lsc.style.display='none';
+}
+
+function renderChart(weights, goal) {
+  const ctx = document.getElementById('weightChart').getContext('2d');
+  if (chart) { chart.destroy(); chart=null; }
+  const data = weights.slice(-16);
+  if (data.length < 2) {
+    ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+    ctx.fillStyle='#adb5bd'; ctx.font='15px -apple-system,sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Add weight entries to see your chart', ctx.canvas.width/2, 90);
+    return;
+  }
+  const labels = data.map(w => { const d=new Date(w.date+'T12:00:00'); return (d.getMonth()+1)+'/'+(d.getDate()); });
+  const datasets = [{ label:'Weight', data:data.map(w=>w.weight), borderColor:'#00956e', backgroundColor:'rgba(0,149,110,0.07)', borderWidth:2.5, pointRadius:4, pointBackgroundColor:'#00956e', tension:0.35, fill:true }];
+  if (goal) datasets.push({ label:'Goal', data:data.map(()=>goal), borderColor:'#b86e00', borderWidth:1.5, borderDash:[5,5], pointRadius:0, tension:0 });
+  chart = new Chart(ctx, { type:'line', data:{labels,datasets}, options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{ backgroundColor:'#fff', borderColor:'#e0e4ea', borderWidth:1, titleColor:'#6b7280', bodyColor:'#111827', bodyFont:{family:'-apple-system,sans-serif'} } }, scales:{ x:{ ticks:{color:'#adb5bd',font:{size:10},maxTicksLimit:6}, grid:{color:'#eef0f3'}, border:{color:'#e0e4ea'} }, y:{ ticks:{color:'#adb5bd',font:{size:10}}, grid:{color:'#eef0f3'}, border:{color:'#e0e4ea'} } } } });
+}
+
+function switchHistoryTab(tab) {
+  document.getElementById('htab-shots').classList.toggle('active',tab==='shots');
+  document.getElementById('htab-weights').classList.toggle('active',tab==='weights');
+  document.getElementById('list-shots').style.display=tab==='shots'?'block':'none';
+  document.getElementById('list-weights').style.display=tab==='weights'?'block':'none';
+}
+
+function renderHistory() {
+  const sl = document.getElementById('list-shots');
+  sl.innerHTML = state.shots.length ? state.shots.map(s=>`<div class="history-row"><div><div class="history-date">${fmtDate(s.date)}</div><div class="history-main">${s.dosage} mg</div><div class="history-sub">${s.site}${s.notes?' · '+s.notes:''}</div></div><div style="display:flex;align-items:center;gap:8px"><span class="badge badge-amber" style="font-size:10px">Tirzepatide</span><button class="delete-btn" onclick="deleteShot(${s.id})">✕</button></div></div>`).join('') : '<div class="empty">No shots logged yet</div>';
+  const wl = document.getElementById('list-weights');
+  const ws = [...state.weights].reverse();
+  wl.innerHTML = ws.length ? ws.map((w,i)=>{ const prev=ws[i+1]; const d=prev?w.weight-prev.weight:null; return `<div class="history-row"><div><div class="history-date">${fmtDate(w.date)}</div><div class="history-main">${w.weight} lbs</div><div class="history-sub" style="color:${w.source==='csv'?'var(--teal)':'var(--text3)'}">${w.source==='csv'?'Withings':'Manual'}</div></div><div style="display:flex;align-items:center;gap:10px">${d!==null?`<span class="delta ${d<0?'down':'up'}">${d>0?'+':''}${d.toFixed(1)}</span>`:''}<button class="delete-btn" onclick="deleteWeight(${w.id})">✕</button></div></div>`; }).join('') : '<div class="empty">No weights logged yet</div>';
+}
+
+function handleCSVImport(input) {
+  const file = input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.split('\n'); let n=0;
+    for (const line of lines) {
+      const cols = line.split(',');
+      if (cols.length<2) continue;
+      const dateStr = cols[0].replace(/"/g,'').trim();
+      const kg = parseFloat(cols[1]);
+      if (!dateStr||isNaN(kg)) continue;
+      const date = parseDate(dateStr); if(!date) continue;
+      const lbs = Math.round(kg*2.20462*10)/10;
+      const idx = state.weights.findIndex(x=>x.date===date);
+      const entry = {id:Date.now()+n,date,weight:lbs,source:'csv'};
+      if(idx>=0) state.weights[idx]=entry; else state.weights.push(entry);
+      n++;
+    }
+    state.weights.sort((a,b)=>a.date.localeCompare(b.date));
+    save(); renderDashboard(); showToast(n+' weights imported'); input.value='';
+  };
+  reader.readAsText(file);
+}
+
+function parseDate(s) {
+  const iso=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(iso) return iso[1]+'-'+iso[2]+'-'+iso[3];
+  const us=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(us) return us[3]+'-'+us[1].padStart(2,'0')+'-'+us[2].padStart(2,'0');
+  return null;
+}
+
+function exportData() {
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='glp1-backup-'+today()+'.json'; a.click(); showToast('Exported');
+}
+
+function clearAll() {
+  if(!confirm('Delete ALL data? Cannot be undone.')) return;
+  state={shots:[],weights:[],settings:{}}; save(); renderDashboard(); renderHistory();
+  document.getElementById('set-start').value=''; document.getElementById('set-goal').value='';
+  showToast('Cleared');
+}
+
+function today() { return new Date().toISOString().split('T')[0]; }
+function fmtDate(s) { const d=new Date(s+'T12:00:00'); return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+
+let toastT;
+function showToast(msg) {
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+// ─── GOOGLE DRIVE ────────────────────────────────────────
+const GDRIVE_CLIENT_ID = '271216132287-el9s9dig3t0df2b9nlqq4rot7hmu0vjr.apps.googleusercontent.com';
+const GDRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file email profile';
+const BACKUP_FILENAME = 'glp1-tracker-backup.json';
+let gToken = null;
+
+function gdriveSetStatus(msg) {
+  const el = document.getElementById('gdrive-status');
+  el.textContent = msg; el.style.display = msg ? 'block' : 'none';
+}
+
+function gdriveSignIn() {
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: GDRIVE_CLIENT_ID,
+    scope: GDRIVE_SCOPE,
+    callback: async (resp) => {
+      if (resp.error) { gdriveSetStatus('Sign in failed: '+resp.error); return; }
+      gToken = resp.access_token;
+      // Get user info
+      try {
+        const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer '+gToken } });
+        const u = await r.json();
+        document.getElementById('gdrive-email').textContent = u.email || '';
+      } catch(e) {}
+      localStorage.setItem('gdrive_token', gToken);
+      document.getElementById('gdrive-signed-out').style.display = 'none';
+      document.getElementById('gdrive-signed-in').style.display = 'block';
+      gdriveSetStatus('');
+      showToast('Google Drive connected');
+    }
+  });
+  client.requestAccessToken();
+}
+
+function gdriveSignOut() {
+  if (gToken) google.accounts.oauth2.revoke(gToken);
+  gToken = null;
+  localStorage.removeItem('gdrive_token');
+  localStorage.removeItem('gdrive_file_id');
+  document.getElementById('gdrive-signed-out').style.display = 'block';
+  document.getElementById('gdrive-signed-in').style.display = 'none';
+  document.getElementById('gdrive-email').textContent = '';
+  showToast('Disconnected');
+}
+
+async function gdriveBackup() {
+  if (!gToken) return showToast('Connect Google Drive first');
+  gdriveSetStatus('Backing up...');
+  try {
+    const content = JSON.stringify({ version:1, exportedAt: new Date().toISOString(), ...state }, null, 2);
+    const fileId = localStorage.getItem('gdrive_file_id');
+
+    if (fileId) {
+      // Update existing file
+      const r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+        method: 'PATCH',
+        headers: { Authorization: 'Bearer '+gToken, 'Content-Type': 'application/json' },
+        body: content
+      });
+      if (r.status === 401) { gToken = null; gdriveSetStatus('Session expired -- reconnect'); return; }
+      if (!r.ok) throw new Error('Update failed');
+    } else {
+      // Find or create file
+      const search = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${BACKUP_FILENAME}'&spaces=drive`, {
+        headers: { Authorization: 'Bearer '+gToken }
+      });
+      const searchData = await search.json();
+      let fid = searchData.files && searchData.files[0] ? searchData.files[0].id : null;
+
+      if (fid) {
+        localStorage.setItem('gdrive_file_id', fid);
+        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fid}?uploadType=media`, {
+          method: 'PATCH',
+          headers: { Authorization: 'Bearer '+gToken, 'Content-Type': 'application/json' },
+          body: content
+        });
+      } else {
+        // Create new
+        const meta = await fetch('https://www.googleapis.com/drive/v3/files', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer '+gToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: BACKUP_FILENAME, mimeType: 'application/json' })
+        });
+        const metaData = await meta.json();
+        fid = metaData.id;
+        localStorage.setItem('gdrive_file_id', fid);
+        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fid}?uploadType=media`, {
+          method: 'PATCH',
+          headers: { Authorization: 'Bearer '+gToken, 'Content-Type': 'application/json' },
+          body: content
+        });
+      }
+    }
+    gdriveSetStatus('Last backup: '+new Date().toLocaleTimeString());
+    showToast('Backed up to Google Drive');
+  } catch(e) {
+    gdriveSetStatus('Backup failed: '+e.message);
+  }
+}
+
+async function gdriveRestore() {
+  if (!gToken) return showToast('Connect Google Drive first');
+  if (!confirm('Restore from Google Drive? This will overwrite your current data.')) return;
+  gdriveSetStatus('Restoring...');
+  try {
+    const fileId = localStorage.getItem('gdrive_file_id');
+    let fid = fileId;
+    if (!fid) {
+      const search = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${BACKUP_FILENAME}'&spaces=drive`, {
+        headers: { Authorization: 'Bearer '+gToken }
+      });
+      const sd = await search.json();
+      fid = sd.files && sd.files[0] ? sd.files[0].id : null;
+    }
+    if (!fid) { gdriveSetStatus('No backup found in Drive'); return; }
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fid}?alt=media`, {
+      headers: { Authorization: 'Bearer '+gToken }
+    });
+    const data = await r.json();
+    if (data.shots) state.shots = data.shots;
+    if (data.weights) state.weights = data.weights;
+    if (data.settings) state.settings = data.settings;
+    save(); renderDashboard(); initSettings();
+    gdriveSetStatus('Restored: '+new Date().toLocaleTimeString());
+    showToast('Restored from Google Drive');
+  } catch(e) {
+    gdriveSetStatus('Restore failed: '+e.message);
+  }
+}
+
+
+  if(state.settings.startWeight) document.getElementById('set-start').value=state.settings.startWeight;
+  if(state.settings.goalWeight) document.getElementById('set-goal').value=state.settings.goalWeight;
+}
+
+load(); initSettings(); renderDashboard();
+</script>
+</body>
+</html>
