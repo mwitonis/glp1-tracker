@@ -590,52 +590,37 @@ function gdriveSignOut() {
 
 async function gdriveBackup(silent=false) {
   if (!gToken) return silent ? null : showToast('Connect Google Drive first');
-  gdriveSetStatus('Backing up...');
+  if (!silent) gdriveSetStatus('Backing up...');
   try {
     const content = JSON.stringify({ version:1, exportedAt: new Date().toISOString(), ...state }, null, 2);
-    const fileId = localStorage.getItem('gdrive_file_id');
 
-    if (fileId) {
-      // Update existing file
-      const r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-        method: 'PATCH',
+    // Always search for existing file by name first
+    const search = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${BACKUP_FILENAME}'+and+trashed=false&spaces=drive&fields=files(id,name)`, {
+      headers: { Authorization: 'Bearer '+gToken }
+    });
+    if (search.status === 401) { gToken = null; gdriveSetStatus('Session expired -- reconnect Google Drive'); return; }
+    const searchData = await search.json();
+    let fid = searchData.files && searchData.files.length > 0 ? searchData.files[0].id : null;
+
+    if (!fid) {
+      // Create new file
+      const meta = await fetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
         headers: { Authorization: 'Bearer '+gToken, 'Content-Type': 'application/json' },
-        body: content
+        body: JSON.stringify({ name: BACKUP_FILENAME, mimeType: 'application/json' })
       });
-      if (r.status === 401) { gToken = null; gdriveSetStatus('Session expired -- reconnect'); return; }
-      if (!r.ok) throw new Error('Update failed');
-    } else {
-      // Find or create file
-      const search = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${BACKUP_FILENAME}'&spaces=drive`, {
-        headers: { Authorization: 'Bearer '+gToken }
-      });
-      const searchData = await search.json();
-      let fid = searchData.files && searchData.files[0] ? searchData.files[0].id : null;
-
-      if (fid) {
-        localStorage.setItem('gdrive_file_id', fid);
-        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fid}?uploadType=media`, {
-          method: 'PATCH',
-          headers: { Authorization: 'Bearer '+gToken, 'Content-Type': 'application/json' },
-          body: content
-        });
-      } else {
-        // Create new
-        const meta = await fetch('https://www.googleapis.com/drive/v3/files', {
-          method: 'POST',
-          headers: { Authorization: 'Bearer '+gToken, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: BACKUP_FILENAME, mimeType: 'application/json' })
-        });
-        const metaData = await meta.json();
-        fid = metaData.id;
-        localStorage.setItem('gdrive_file_id', fid);
-        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fid}?uploadType=media`, {
-          method: 'PATCH',
-          headers: { Authorization: 'Bearer '+gToken, 'Content-Type': 'application/json' },
-          body: content
-        });
-      }
+      const metaData = await meta.json();
+      fid = metaData.id;
     }
+
+    // Upload content to file
+    const r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fid}?uploadType=media`, {
+      method: 'PATCH',
+      headers: { Authorization: 'Bearer '+gToken, 'Content-Type': 'application/json' },
+      body: content
+    });
+    if (!r.ok) throw new Error('Upload failed: '+r.status);
+    localStorage.setItem('gdrive_file_id', fid);
     gdriveSetStatus('Last backup: '+new Date().toLocaleTimeString());
     if (!silent) showToast('Backed up to Google Drive');
   } catch(e) {
