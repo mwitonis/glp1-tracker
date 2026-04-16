@@ -396,6 +396,7 @@ function saveShot() {
   if (!selSite) return showToast('Select injection site');
   state.shots.unshift({ id: Date.now(), date: document.getElementById('shot-date').value, dosage: selDosage, site: (selSide?selSide+' ':'')+selSite, notes: document.getElementById('shot-notes').value });
   save(); closeModal('modal-shot'); renderDashboard(); showToast(selDosage+'mg logged');
+  if (gToken) gdriveBackup(true);
 }
 
 function saveWeight() {
@@ -407,6 +408,7 @@ function saveWeight() {
   if (idx>=0) state.weights[idx]=entry; else state.weights.push(entry);
   state.weights.sort((a,b)=>a.date.localeCompare(b.date));
   save(); closeModal('modal-weight'); renderDashboard(); showToast(w+' lbs saved');
+  if (gToken) gdriveBackup();
 }
 
 function deleteShot(id) { if (!confirm('Delete shot?')) return; state.shots=state.shots.filter(s=>s.id!==id); save(); renderHistory(); renderDashboard(); }
@@ -586,8 +588,8 @@ function gdriveSignOut() {
   showToast('Disconnected');
 }
 
-async function gdriveBackup() {
-  if (!gToken) return showToast('Connect Google Drive first');
+async function gdriveBackup(silent=false) {
+  if (!gToken) return silent ? null : showToast('Connect Google Drive first');
   gdriveSetStatus('Backing up...');
   try {
     const content = JSON.stringify({ version:1, exportedAt: new Date().toISOString(), ...state }, null, 2);
@@ -635,7 +637,7 @@ async function gdriveBackup() {
       }
     }
     gdriveSetStatus('Last backup: '+new Date().toLocaleTimeString());
-    showToast('Backed up to Google Drive');
+    if (!silent) showToast('Backed up to Google Drive');
   } catch(e) {
     gdriveSetStatus('Backup failed: '+e.message);
   }
