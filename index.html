@@ -145,7 +145,7 @@ textarea.form-input { resize: none; height: 84px; line-height: 1.5; }
   <div class="page-header">
     <div>
       <div class="page-title">GLP-1</div>
-      <div class="page-sub">Tirzepatide tracker</div>
+      <div class="page-sub">Zepbound tracker</div>
     </div>
     <button class="badge badge-green" onclick="document.getElementById('csv-file-input').click()" style="cursor:pointer;border:none;font-size:12px;">Import CSV</button>
     <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCSVImport(this)">
@@ -179,7 +179,7 @@ textarea.form-input { resize: none; height: 84px; line-height: 1.5; }
         <div class="shot-dose" id="last-dose">-- <span>mg</span></div>
         <div class="shot-meta" id="last-meta">--</div>
       </div>
-      <span class="badge badge-amber">Tirzepatide</span>
+      <span class="badge badge-amber">Zepbound</span>
     </div>
   </div>
 
@@ -248,7 +248,7 @@ textarea.form-input { resize: none; height: 84px; line-height: 1.5; }
     <button class="btn-outline btn-danger" onclick="clearAll()">Clear all data</button>
   </div>
 
-  <div style="text-align:center;color:var(--text3);font-size:12px;margin-top:28px;">GLP-1 Tracker · Tirzepatide</div>
+  <div style="text-align:center;color:var(--text3);font-size:12px;margin-top:28px;">GLP-1 Tracker · Zepbound</div>
 </div>
 
 <!-- LOG SHOT MODAL -->
@@ -486,7 +486,7 @@ function switchHistoryTab(tab) {
 
 function renderHistory() {
   const sl = document.getElementById('list-shots');
-  sl.innerHTML = state.shots.length ? state.shots.map(s=>`<div class="history-row"><div><div class="history-date">${fmtDate(s.date)}</div><div class="history-main">${s.dosage} mg</div><div class="history-sub">${s.site}${s.notes?' · '+s.notes:''}</div></div><div style="display:flex;align-items:center;gap:8px"><span class="badge badge-amber" style="font-size:10px">Tirzepatide</span><button class="delete-btn" onclick="deleteShot(${s.id})">✕</button></div></div>`).join('') : '<div class="empty">No shots logged yet</div>';
+  sl.innerHTML = state.shots.length ? state.shots.map(s=>`<div class="history-row"><div><div class="history-date">${fmtDate(s.date)}</div><div class="history-main">${s.dosage} mg</div><div class="history-sub">${s.site}${s.notes?' · '+s.notes:''}</div></div><div style="display:flex;align-items:center;gap:8px"><span class="badge badge-amber" style="font-size:10px">Zepbound</span><button class="delete-btn" onclick="deleteShot(${s.id})">✕</button></div></div>`).join('') : '<div class="empty">No shots logged yet</div>';
   const wl = document.getElementById('list-weights');
   const ws = [...state.weights].reverse();
   wl.innerHTML = ws.length ? ws.map((w,i)=>{ const prev=ws[i+1]; const d=prev?w.weight-prev.weight:null; return `<div class="history-row"><div><div class="history-date">${fmtDate(w.date)}</div><div class="history-main">${w.weight} lbs</div><div class="history-sub" style="color:${w.source==='csv'?'var(--teal)':'var(--text3)'}">${w.source==='csv'?'Withings':'Manual'}</div></div><div style="display:flex;align-items:center;gap:10px">${d!==null?`<span class="delta ${d<0?'down':'up'}">${d>0?'+':''}${d.toFixed(1)}</span>`:''}<button class="delete-btn" onclick="deleteWeight(${w.id})">✕</button></div></div>`; }).join('') : '<div class="empty">No weights logged yet</div>';
