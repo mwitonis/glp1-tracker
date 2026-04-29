@@ -145,7 +145,7 @@ textarea.form-input { resize: none; height: 84px; line-height: 1.5; }
   <div class="page-header">
     <div>
       <div class="page-title">GLP-1</div>
-      <div class="page-sub">Zepbound tracker</div>
+      <div class="page-sub">Tirzepatide tracker</div>
     </div>
     <button class="badge badge-green" onclick="document.getElementById('csv-file-input').click()" style="cursor:pointer;border:none;font-size:12px;">Import CSV</button>
     <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCSVImport(this)">
@@ -168,8 +168,15 @@ textarea.form-input { resize: none; height: 84px; line-height: 1.5; }
   </div>
 
   <div class="card">
-    <div class="card-label">Weight trend</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="card-label" style="margin-bottom:0" id="chart-label">Weight trend</div>
+      <div style="display:flex;gap:6px">
+        <button id="btn-chart-weight" onclick="switchChart('weight')" style="padding:5px 12px;border-radius:20px;border:1.5px solid var(--teal);background:var(--teal);color:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">Weight</button>
+        <button id="btn-chart-conc" onclick="switchChart('conc')" style="padding:5px 12px;border-radius:20px;border:1.5px solid var(--border2);background:transparent;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">Drug level</button>
+      </div>
+    </div>
     <div class="chart-wrap"><canvas id="weightChart" role="img" aria-label="Weight trend over time"></canvas></div>
+    <div class="chart-wrap" style="display:none"><canvas id="concChart" role="img" aria-label="Drug concentration over time"></canvas></div>
   </div>
 
   <div class="card" id="last-shot-card" style="display:none">
@@ -179,7 +186,7 @@ textarea.form-input { resize: none; height: 84px; line-height: 1.5; }
         <div class="shot-dose" id="last-dose">-- <span>mg</span></div>
         <div class="shot-meta" id="last-meta">--</div>
       </div>
-      <span class="badge badge-amber">Zepbound</span>
+      <span class="badge badge-amber">Tirzepatide</span>
     </div>
   </div>
 
@@ -248,7 +255,7 @@ textarea.form-input { resize: none; height: 84px; line-height: 1.5; }
     <button class="btn-outline btn-danger" onclick="clearAll()">Clear all data</button>
   </div>
 
-  <div style="text-align:center;color:var(--text3);font-size:12px;margin-top:28px;">GLP-1 Tracker · Zepbound</div>
+  <div style="text-align:center;color:var(--text3);font-size:12px;margin-top:28px;">GLP-1 Tracker · Tirzepatide</div>
 </div>
 
 <!-- LOG SHOT MODAL -->
@@ -477,6 +484,150 @@ function renderChart(weights, goal) {
   chart = new Chart(ctx, { type:'line', data:{labels,datasets}, options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{ backgroundColor:'#fff', borderColor:'#e0e4ea', borderWidth:1, titleColor:'#6b7280', bodyColor:'#111827', bodyFont:{family:'-apple-system,sans-serif'} } }, scales:{ x:{ ticks:{color:'#adb5bd',font:{size:10},maxTicksLimit:6}, grid:{color:'#eef0f3'}, border:{color:'#e0e4ea'} }, y:{ ticks:{color:'#adb5bd',font:{size:10}}, grid:{color:'#eef0f3'}, border:{color:'#e0e4ea'} } } } });
 }
 
+let concChart = null;
+let activeChart = 'weight';
+
+function switchChart(type) {
+  activeChart = type;
+  const weightWrap = document.getElementById('weightChart').parentElement;
+  const concWrap = document.getElementById('concChart').parentElement;
+  const btnW = document.getElementById('btn-chart-weight');
+  const btnC = document.getElementById('btn-chart-conc');
+  const label = document.getElementById('chart-label');
+
+  if (type === 'weight') {
+    weightWrap.style.display = 'block';
+    concWrap.style.display = 'none';
+    btnW.style.background = 'var(--teal)'; btnW.style.color = '#fff'; btnW.style.borderColor = 'var(--teal)';
+    btnC.style.background = 'transparent'; btnC.style.color = 'var(--text2)'; btnC.style.borderColor = 'var(--border2)';
+    label.textContent = 'Weight trend';
+  } else {
+    weightWrap.style.display = 'none';
+    concWrap.style.display = 'block';
+    btnC.style.background = 'var(--teal)'; btnC.style.color = '#fff'; btnC.style.borderColor = 'var(--teal)';
+    btnW.style.background = 'transparent'; btnW.style.color = 'var(--text2)'; btnW.style.borderColor = 'var(--border2)';
+    label.textContent = 'Drug level estimate';
+    renderConcChart(state.shots);
+  }
+}
+
+function renderConcChart(shots) {
+  const ctx = document.getElementById('concChart').getContext('2d');
+  if (concChart) { concChart.destroy(); concChart = null; }
+
+  if (!shots || shots.length === 0) {
+    ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+    ctx.fillStyle='#adb5bd'; ctx.font='15px -apple-system,sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Log shots to see drug level estimate', ctx.canvas.width/2, 90);
+    return;
+  }
+
+  // Tirzepatide half-life ~5 days = ~120 hours
+  // Weekly dosing typical
+  const HALF_LIFE_DAYS = 5.0;
+  const DECAY = Math.LN2 / HALF_LIFE_DAYS;
+
+  // Build daily timeline from first shot to today + 14 days
+  const sortedShots = [...shots].sort((a,b) => a.date.localeCompare(b.date));
+  const firstDate = new Date(sortedShots[sortedShots.length-1].date + 'T12:00:00');
+  const startDate = new Date(sortedShots[0].date + 'T12:00:00');
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + 14); // project 2 weeks forward
+
+  const days = [];
+  const d = new Date(startDate);
+  while (d <= endDate) { days.push(new Date(d)); d.setDate(d.getDate()+1); }
+
+  // For each day, sum contributions from all past shots using exponential decay
+  const concentrations = days.map(day => {
+    let total = 0;
+    for (const shot of sortedShots) {
+      const shotDate = new Date(shot.date + 'T12:00:00');
+      const daysDiff = (day - shotDate) / (1000 * 60 * 60 * 24);
+      if (daysDiff >= 0) {
+        total += shot.dosage * Math.exp(-DECAY * daysDiff);
+      }
+    }
+    return Math.round(total * 100) / 100;
+  });
+
+  const labels = days.map(d => (d.getMonth()+1)+'/'+(d.getDate()));
+  const today = new Date();
+  const todayIdx = days.findIndex(d => d.toDateString() === today.toDateString());
+
+  // Split into past (solid) and future (dashed) -- use two datasets
+  const pastConc = concentrations.map((v,i) => i <= todayIdx ? v : null);
+  const futureConc = concentrations.map((v,i) => i >= todayIdx ? v : null);
+
+  // Mark shot days
+  const shotDates = new Set(sortedShots.map(s => {
+    const sd = new Date(s.date+'T12:00:00');
+    return (sd.getMonth()+1)+'/'+(sd.getDate());
+  }));
+
+  concChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Drug level (past)',
+          data: pastConc,
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99,102,241,0.07)',
+          borderWidth: 2.5,
+          pointRadius: labels.map(l => shotDates.has(l) ? 5 : 0),
+          pointBackgroundColor: '#6366f1',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2,
+          tension: 0.4,
+          fill: true,
+          spanGaps: false,
+        },
+        {
+          label: 'Drug level (projected)',
+          data: futureConc,
+          borderColor: '#6366f1',
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          borderDash: [5, 4],
+          pointRadius: 0,
+          tension: 0.4,
+          fill: false,
+          spanGaps: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#fff',
+          borderColor: '#e0e4ea',
+          borderWidth: 1,
+          titleColor: '#6b7280',
+          bodyColor: '#111827',
+          bodyFont: { family: '-apple-system,sans-serif' },
+          callbacks: {
+            label: ctx => ` ${ctx.parsed.y} mg estimated`,
+            afterBody: (items) => {
+              const label = items[0]?.label;
+              return shotDates.has(label) ? ['💉 Shot day'] : [];
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks:{color:'#adb5bd',font:{size:10},maxTicksLimit:8}, grid:{color:'#eef0f3'}, border:{color:'#e0e4ea'} },
+        y: { ticks:{color:'#adb5bd',font:{size:10}, callback: v => v+'mg'}, grid:{color:'#eef0f3'}, border:{color:'#e0e4ea'}, title:{display:true,text:'Est. concentration',color:'#adb5bd',font:{size:10}} }
+      }
+    }
+  });
+}
+
+
 function switchHistoryTab(tab) {
   document.getElementById('htab-shots').classList.toggle('active',tab==='shots');
   document.getElementById('htab-weights').classList.toggle('active',tab==='weights');
@@ -486,7 +637,7 @@ function switchHistoryTab(tab) {
 
 function renderHistory() {
   const sl = document.getElementById('list-shots');
-  sl.innerHTML = state.shots.length ? state.shots.map(s=>`<div class="history-row"><div><div class="history-date">${fmtDate(s.date)}</div><div class="history-main">${s.dosage} mg</div><div class="history-sub">${s.site}${s.notes?' · '+s.notes:''}</div></div><div style="display:flex;align-items:center;gap:8px"><span class="badge badge-amber" style="font-size:10px">Zepbound</span><button class="delete-btn" onclick="deleteShot(${s.id})">✕</button></div></div>`).join('') : '<div class="empty">No shots logged yet</div>';
+  sl.innerHTML = state.shots.length ? state.shots.map(s=>`<div class="history-row"><div><div class="history-date">${fmtDate(s.date)}</div><div class="history-main">${s.dosage} mg</div><div class="history-sub">${s.site}${s.notes?' · '+s.notes:''}</div></div><div style="display:flex;align-items:center;gap:8px"><span class="badge badge-amber" style="font-size:10px">Tirzepatide</span><button class="delete-btn" onclick="deleteShot(${s.id})">✕</button></div></div>`).join('') : '<div class="empty">No shots logged yet</div>';
   const wl = document.getElementById('list-weights');
   const ws = [...state.weights].reverse();
   wl.innerHTML = ws.length ? ws.map((w,i)=>{ const prev=ws[i+1]; const d=prev?w.weight-prev.weight:null; return `<div class="history-row"><div><div class="history-date">${fmtDate(w.date)}</div><div class="history-main">${w.weight} lbs</div><div class="history-sub" style="color:${w.source==='csv'?'var(--teal)':'var(--text3)'}">${w.source==='csv'?'Withings':'Manual'}</div></div><div style="display:flex;align-items:center;gap:10px">${d!==null?`<span class="delta ${d<0?'down':'up'}">${d>0?'+':''}${d.toFixed(1)}</span>`:''}<button class="delete-btn" onclick="deleteWeight(${w.id})">✕</button></div></div>`; }).join('') : '<div class="empty">No weights logged yet</div>';
