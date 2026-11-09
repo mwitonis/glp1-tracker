@@ -223,6 +223,24 @@ textarea.form-input { resize: none; height: 84px; line-height: 1.5; }
     </div>
   </div>
 
+  <div class="section-header">Compounded Vial (for syringe units)</div>
+  <div class="card">
+    <p class="help-text">Enter the concentration from your vial label, or fill in total mg and total mL below and it will be calculated. The app converts syringe units to mg using a standard U-100 syringe (100 units = 1 mL).</p>
+    <div class="settings-row">
+      <span class="settings-label">Concentration (mg/mL)</span>
+      <input type="number" step="any" inputmode="decimal" class="settings-input" id="set-vial-conc" placeholder="5" onchange="saveVialConc(this.value)">
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Or total mg in vial</span>
+      <input type="number" step="any" inputmode="decimal" class="settings-input" id="set-vial-mg" placeholder="10" onchange="saveVialCalc()">
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Or total volume (mL)</span>
+      <input type="number" step="any" inputmode="decimal" class="settings-input" id="set-vial-ml" placeholder="2" onchange="saveVialCalc()">
+    </div>
+    <div class="help-text" id="vial-conc" style="margin-top:10px"></div>
+  </div>
+
   <div class="section-header">Withings Weight Data</div>
   <div class="card">
     <p class="help-text">Export your weight from the Withings app: Profile → Export Data → Weight. Then import it here.</p>
@@ -268,7 +286,18 @@ textarea.form-input { resize: none; height: 84px; line-height: 1.5; }
       <input type="date" class="form-input" id="shot-date">
     </div>
     <div class="form-section">
-      <label class="form-label">Dosage (mg)</label>
+      <label class="form-label">Dosage</label>
+      <div class="chip-row" style="margin-bottom:12px">
+        <div class="chip selected" id="mode-mg" onclick="setDoseMode('mg')">Quick pick (mg)</div>
+        <div class="chip" id="mode-units" onclick="setDoseMode('units')">Syringe units</div>
+      </div>
+      <div id="units-entry" style="display:none">
+        <label class="form-label">Vial concentration (mg/mL)</label>
+        <input type="number" step="any" inputmode="decimal" class="form-input" id="shot-conc" placeholder="e.g. 5" oninput="onShotConcInput()" style="margin-bottom:12px">
+        <label class="form-label">Units drawn</label>
+        <input type="number" step="any" inputmode="decimal" class="form-input" id="units-input" placeholder="e.g. 5" oninput="onUnitsInput()">
+        <div class="help-text" id="units-result" style="margin-top:8px"></div>
+      </div>
       <div class="chip-row" id="dosage-chips">
         <div class="chip" onclick="selectChip(this,'dosage')">2.5</div>
         <div class="chip" onclick="selectChip(this,'dosage')">5</div>
@@ -290,6 +319,7 @@ textarea.form-input { resize: none; height: 84px; line-height: 1.5; }
       <label class="form-label">Side (optional)</label>
       <div class="chip-row" id="side-chips">
         <div class="chip" onclick="toggleChip(this,'side')">Left</div>
+        <div class="chip" onclick="toggleChip(this,'side')">Center</div>
         <div class="chip" onclick="toggleChip(this,'side')">Right</div>
       </div>
     </div>
@@ -341,14 +371,96 @@ textarea.form-input { resize: none; height: 84px; line-height: 1.5; }
 <script>
 let state = { shots: [], weights: [], settings: {} };
 let chart = null;
-let selDosage = null, selSite = null, selSide = null;
+let selDosage = null, selSite = null, selSide = null, selUnits = null, doseMode = 'mg';
+
+function fmtMg(n) { return parseFloat(Number(n).toFixed(3)); }
+
+// mg per mL from vial settings, or null if not set
+function vialMgPerMl() {
+  const { vialConc, vialMg, vialMl } = state.settings;
+  if (vialConc > 0) return vialConc;
+  return (vialMg > 0 && vialMl > 0) ? vialMg / vialMl : null;
+}
+
+// Settings: concentration typed directly
+function saveVialConc(val) {
+  const c = parseFloat(val);
+  state.settings.vialConc = c > 0 ? c : null;
+  save(); renderVialConc(); syncShotConc(); onUnitsInput(); showToast('Saved');
+}
+
+// Settings: concentration calculated from total mg and total mL
+function saveVialCalc() {
+  const mg = parseFloat(document.getElementById('set-vial-mg').value);
+  const ml = parseFloat(document.getElementById('set-vial-ml').value);
+  state.settings.vialMg = mg > 0 ? mg : null;
+  state.settings.vialMl = ml > 0 ? ml : null;
+  if (mg > 0 && ml > 0) {
+    state.settings.vialConc = fmtMg(mg / ml);
+    document.getElementById('set-vial-conc').value = state.settings.vialConc;
+  }
+  save(); renderVialConc(); syncShotConc(); onUnitsInput(); showToast('Saved');
+}
+
+// Shot form: editing concentration here updates the saved vial (current vial persists)
+function onShotConcInput() {
+  const c = parseFloat(document.getElementById('shot-conc').value);
+  state.settings.vialConc = c > 0 ? c : null;
+  document.getElementById('set-vial-conc').value = state.settings.vialConc || '';
+  save(); renderVialConc(); onUnitsInput();
+}
+
+function syncShotConc() {
+  const c = vialMgPerMl();
+  document.getElementById('shot-conc').value = c ? fmtMg(c) : '';
+}
+
+function renderVialConc() {
+  const el = document.getElementById('vial-conc');
+  const c = vialMgPerMl();
+  el.textContent = c ? 'Concentration: ' + fmtMg(c) + ' mg/mL (' + fmtMg(c/100) + ' mg per unit)' : '';
+}
+
+function setDoseMode(mode) {
+  doseMode = mode;
+  document.getElementById('mode-mg').classList.toggle('selected', mode === 'mg');
+  document.getElementById('mode-units').classList.toggle('selected', mode === 'units');
+  document.getElementById('units-entry').style.display = mode === 'units' ? 'block' : 'none';
+  document.getElementById('dosage-chips').style.display = mode === 'mg' ? 'flex' : 'none';
+  if (mode === 'units') {
+    selDosage = null;
+    document.querySelectorAll('#dosage-chips .chip').forEach(c => c.classList.remove('selected'));
+    syncShotConc();
+    onUnitsInput();
+  } else {
+    selUnits = null;
+    updateConfirm();
+  }
+}
+
+function onUnitsInput() {
+  if (doseMode !== 'units') return;
+  const res = document.getElementById('units-result');
+  const u = parseFloat(document.getElementById('units-input').value);
+  const c = vialMgPerMl();
+  if (!c) {
+    selDosage = null; selUnits = null;
+    res.textContent = 'Enter the vial concentration (mg/mL) above to convert units to mg.';
+    updateConfirm(); return;
+  }
+  if (!u || u <= 0) { selDosage = null; selUnits = null; res.textContent = ''; updateConfirm(); return; }
+  selUnits = u;
+  selDosage = fmtMg(u / 100 * c);
+  res.textContent = u + ' units at ' + fmtMg(c) + ' mg/mL = ' + selDosage + ' mg';
+  updateConfirm();
+}
 
 function save() { localStorage.setItem('glp1', JSON.stringify(state)); }
 function load() { try { const r = localStorage.getItem('glp1'); if (r) state = JSON.parse(r); } catch(e){} }
 
 function saveSetting(key, val) {
   state.settings[key] = val ? parseFloat(val) : null;
-  save(); renderDashboard(); showToast('Saved');
+  save(); renderDashboard(); renderVialConc(); onUnitsInput(); showToast('Saved');
 }
 
 function switchScreen(name) {
@@ -365,8 +477,11 @@ function openModal(id) {
     document.getElementById('shot-date').value = today();
     document.getElementById('shot-notes').value = '';
     document.getElementById('shot-confirm').classList.remove('show');
-    selDosage = null; selSite = null; selSide = null;
+    selDosage = null; selSite = null; selSide = null; selUnits = null;
     document.querySelectorAll('#modal-shot .chip').forEach(c => c.classList.remove('selected'));
+    document.getElementById('units-input').value = '';
+    document.getElementById('units-result').textContent = '';
+    setDoseMode('mg');
   }
   if (id === 'modal-weight') {
     document.getElementById('weight-date').value = today();
@@ -401,7 +516,7 @@ function updateConfirm() {
 function saveShot() {
   if (!selDosage) return showToast('Select a dosage');
   if (!selSite) return showToast('Select injection site');
-  state.shots.unshift({ id: Date.now(), date: document.getElementById('shot-date').value, dosage: selDosage, site: (selSide?selSide+' ':'')+selSite, notes: document.getElementById('shot-notes').value });
+  state.shots.unshift({ id: Date.now(), date: document.getElementById('shot-date').value, dosage: selDosage, units: (doseMode==='units' ? selUnits : null), conc: (doseMode==='units' ? vialMgPerMl() : null), site: (selSide?selSide+' ':'')+selSite, notes: document.getElementById('shot-notes').value });
   save(); closeModal('modal-shot'); renderDashboard(); showToast(selDosage+'mg logged');
   if (gToken) gdriveBackup(true);
 }
@@ -463,7 +578,7 @@ function renderDashboard() {
   const lsc = document.getElementById('last-shot-card');
   if (S.length) {
     lsc.style.display='block';
-    document.getElementById('last-dose').innerHTML=S[0].dosage+' <span>mg</span>';
+    document.getElementById('last-dose').innerHTML=fmtMg(S[0].dosage)+' <span>mg'+(S[0].units?' ('+S[0].units+' units)':'')+'</span>';
     document.getElementById('last-meta').textContent=fmtDate(S[0].date)+' · '+S[0].site;
   } else lsc.style.display='none';
 }
@@ -548,7 +663,7 @@ function renderConcChart(shots) {
         total += shot.dosage * Math.exp(-DECAY * daysDiff);
       }
     }
-    return Math.round(total * 100) / 100;
+    return Math.round(total * 1000) / 1000;
   });
 
   const labels = days.map(d => (d.getMonth()+1)+'/'+(d.getDate()));
@@ -621,7 +736,7 @@ function renderConcChart(shots) {
       },
       scales: {
         x: { ticks:{color:'#adb5bd',font:{size:10},maxTicksLimit:8}, grid:{color:'#eef0f3'}, border:{color:'#e0e4ea'} },
-        y: { ticks:{color:'#adb5bd',font:{size:10}, callback: v => v+'mg'}, grid:{color:'#eef0f3'}, border:{color:'#e0e4ea'}, title:{display:true,text:'Est. concentration',color:'#adb5bd',font:{size:10}} }
+        y: { ticks:{color:'#adb5bd',font:{size:10}, callback: v => fmtMg(v)+'mg'}, grid:{color:'#eef0f3'}, border:{color:'#e0e4ea'}, title:{display:true,text:'Est. concentration',color:'#adb5bd',font:{size:10}} }
       }
     }
   });
@@ -637,7 +752,7 @@ function switchHistoryTab(tab) {
 
 function renderHistory() {
   const sl = document.getElementById('list-shots');
-  sl.innerHTML = state.shots.length ? state.shots.map(s=>`<div class="history-row"><div><div class="history-date">${fmtDate(s.date)}</div><div class="history-main">${s.dosage} mg</div><div class="history-sub">${s.site}${s.notes?' · '+s.notes:''}</div></div><div style="display:flex;align-items:center;gap:8px"><span class="badge badge-amber" style="font-size:10px">Tirzepatide</span><button class="delete-btn" onclick="deleteShot(${s.id})">✕</button></div></div>`).join('') : '<div class="empty">No shots logged yet</div>';
+  sl.innerHTML = state.shots.length ? state.shots.map(s=>`<div class="history-row"><div><div class="history-date">${fmtDate(s.date)}</div><div class="history-main">${fmtMg(s.dosage)} mg${s.units?' <span style="font-size:13px;font-weight:500;color:var(--text2)">('+s.units+' units'+(s.conc?' @ '+fmtMg(s.conc)+' mg/mL':'')+')</span>':''}</div><div class="history-sub">${s.site}${s.notes?' · '+s.notes:''}</div></div><div style="display:flex;align-items:center;gap:8px"><span class="badge badge-amber" style="font-size:10px">Tirzepatide</span><button class="delete-btn" onclick="deleteShot(${s.id})">✕</button></div></div>`).join('') : '<div class="empty">No shots logged yet</div>';
   const wl = document.getElementById('list-weights');
   const ws = [...state.weights].reverse();
   wl.innerHTML = ws.length ? ws.map((w,i)=>{ const prev=ws[i+1]; const d=prev?w.weight-prev.weight:null; return `<div class="history-row"><div><div class="history-date">${fmtDate(w.date)}</div><div class="history-main">${w.weight} lbs</div><div class="history-sub" style="color:${w.source==='csv'?'var(--teal)':'var(--text3)'}">${w.source==='csv'?'Withings':'Manual'}</div></div><div style="display:flex;align-items:center;gap:10px">${d!==null?`<span class="delta ${d<0?'down':'up'}">${d>0?'+':''}${d.toFixed(1)}</span>`:''}<button class="delete-btn" onclick="deleteWeight(${w.id})">✕</button></div></div>`; }).join('') : '<div class="empty">No weights logged yet</div>';
@@ -812,6 +927,10 @@ async function gdriveRestore() {
 function initSettings() {
   if(state.settings.startWeight) document.getElementById('set-start').value=state.settings.startWeight;
   if(state.settings.goalWeight) document.getElementById('set-goal').value=state.settings.goalWeight;
+  if(state.settings.vialConc) document.getElementById('set-vial-conc').value=state.settings.vialConc;
+  if(state.settings.vialMg) document.getElementById('set-vial-mg').value=state.settings.vialMg;
+  if(state.settings.vialMl) document.getElementById('set-vial-ml').value=state.settings.vialMl;
+  renderVialConc();
 }
 
 load(); initSettings(); renderDashboard();
